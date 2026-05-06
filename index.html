@@ -1281,6 +1281,7 @@
 
     const LOWER_ROUNDS = [
       { label: "Lower Round 1", meta: "Best of 3", matches: 2 },
+      { label: "Lower Semi-finals", meta: "Winners vs upper semi losers", matches: 2 },
       { label: "Lower Final", meta: "Best of 3", matches: 1 },
     ];
 
@@ -1490,6 +1491,8 @@
         state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
         state.courts = Array.isArray(data.courts) ? data.courts : [];
         ensureCourtsLength();
+        syncLowerRoundTwoFromUpperSemis();
+        lowerApplyPropagationFrom(0);
         syncGrandFinalFromLower();
         isHydrating = false;
         return true;
@@ -1608,6 +1611,7 @@
         return matches;
       });
       syncLowerRoundOneFromUpper();
+      syncLowerRoundTwoFromUpperSemis();
       lowerApplyPropagationFrom(0);
       syncGrandFinalFromLower();
     }
@@ -1682,10 +1686,13 @@
       // Recalculate only from the edited round onward so manual selections
       // in later rounds are not overwritten by earlier rounds.
       applyPropagationFrom(roundIdx);
-      if (roundIdx === 0) {
+      if (roundIdx <= 0) {
         syncLowerRoundOneFromUpper();
-        lowerApplyPropagationFrom(0);
       }
+      if (roundIdx <= 1) {
+        syncLowerRoundTwoFromUpperSemis();
+      }
+      lowerApplyPropagationFrom(0);
       syncGrandFinalFromLower();
       render();
       queueSaveTournamentState();
@@ -1709,6 +1716,26 @@
       lowerClearDownstreamFrom(0, 1);
     }
 
+    function syncLowerRoundTwoFromUpperSemis() {
+      if (!state.rounds?.[1] || !state.lowerRounds?.[1]) return;
+      const upperSemis = state.rounds[1];
+      const lowerSemis = state.lowerRounds[1];
+      const n = Math.min(upperSemis.length, lowerSemis.length);
+      for (let i = 0; i < n; i++) {
+        const up = upperSemis[i];
+        const w = getWinner(up);
+        const loser = w === "A" ? up.teamB : w === "B" ? up.teamA : "";
+        if (lowerSemis[i].teamB !== loser) {
+          lowerSemis[i].teamB = loser;
+          lowerSemis[i].scoreB = "";
+        }
+        if (!lowerSemis[i].teamA) lowerSemis[i].scoreA = "";
+        if (!lowerSemis[i].teamB) lowerSemis[i].scoreB = "";
+      }
+      lowerClearDownstreamFrom(1, 0);
+      lowerClearDownstreamFrom(1, 1);
+    }
+
     function syncGrandFinalFromLower() {
       if (!state.rounds?.length) return;
       const grandFinal = state.rounds[state.rounds.length - 1]?.[0];
@@ -1727,8 +1754,11 @@
     function lowerClearDownstreamFrom(roundIdx, matchIdx) {
       const nextR = roundIdx + 1;
       if (nextR >= state.lowerRounds.length) return;
-      const nextM = Math.floor(matchIdx / 2);
-      const slot = matchIdx % 2 === 0 ? "A" : "B";
+      const curCount = state.lowerRounds[roundIdx].length;
+      const nextCount = state.lowerRounds[nextR].length;
+      const sameCount = curCount === nextCount;
+      const nextM = sameCount ? matchIdx : Math.floor(matchIdx / 2);
+      const slot = sameCount ? "A" : matchIdx % 2 === 0 ? "A" : "B";
       const next = state.lowerRounds[nextR][nextM];
       if (slot === "A") {
         next.teamA = "";
@@ -1745,8 +1775,11 @@
       const w = getWinner(row);
       const nextR = roundIdx + 1;
       if (nextR >= state.lowerRounds.length) return;
-      const nextM = Math.floor(matchIdx / 2);
-      const slot = matchIdx % 2 === 0 ? "A" : "B";
+      const curCount = state.lowerRounds[roundIdx].length;
+      const nextCount = state.lowerRounds[nextR].length;
+      const sameCount = curCount === nextCount;
+      const nextM = sameCount ? matchIdx : Math.floor(matchIdx / 2);
+      const slot = sameCount ? "A" : matchIdx % 2 === 0 ? "A" : "B";
       const next = state.lowerRounds[nextR][nextM];
       if (w === "A") next[slot === "A" ? "teamA" : "teamB"] = row.teamA;
       else if (w === "B") next[slot === "A" ? "teamA" : "teamB"] = row.teamB;
