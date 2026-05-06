@@ -1543,7 +1543,9 @@
           }
         }
       }
-      applyPropagationFrom(0);
+      // Recalculate only from the edited round onward so manual selections
+      // in later rounds are not overwritten by earlier rounds.
+      applyPropagationFrom(roundIdx);
       render();
       queueSaveTournamentState();
     }
@@ -1563,8 +1565,7 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      const lockedByRound = roundIdx > 0;
-      const disabled = !state.isAdmin || lockedByRound;
+      const disabled = !state.isAdmin;
       return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
