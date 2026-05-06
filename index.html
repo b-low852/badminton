@@ -2066,7 +2066,7 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      const disabled = !state.isAdmin || roundIdx === 0;
+      const disabled = !state.isAdmin;
       return `<select data-lr="${roundIdx}" data-lm="${matchIdx}" data-side="${side}" class="lower-team-select" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
