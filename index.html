@@ -1146,16 +1146,6 @@
   </header>
 
   <div class="container">
-    <section class="admin-panel" aria-label="Admin access">
-      <strong>Admin edit access</strong>
-      <input type="password" id="admin-password" placeholder="Enter admin password" />
-      <button type="button" class="admin-login-btn" id="admin-login-btn">Login</button>
-      <button type="button" class="admin-logout-btn" id="admin-logout-btn">Logout</button>
-      <button type="button" class="admin-logout-btn" id="admin-save-btn" disabled>Save now</button>
-      <span class="admin-status" id="admin-status">View-only mode (login to edit)</span>
-      <span class="admin-status" id="sync-status" style="margin-left:auto"></span>
-    </section>
-
     <section class="event-section" id="info-card" aria-labelledby="event-info-heading" role="button" tabindex="0" aria-label="Open poster and info">
       <h2 id="event-info-heading">BADMINTOON 🫧</h2>
       <ul class="event-list">
@@ -1255,6 +1245,16 @@
     </form>
     <div class="team-list-label">Registered teams</div>
     <ul class="team-chips" id="team-chips"></ul>
+  </section>
+
+  <section class="admin-panel" aria-label="Admin access">
+    <strong>Admin edit access</strong>
+    <input type="password" id="admin-password" placeholder="Enter admin password" />
+    <button type="button" class="admin-login-btn" id="admin-login-btn">Login</button>
+    <button type="button" class="admin-logout-btn" id="admin-logout-btn">Logout</button>
+    <button type="button" class="admin-logout-btn" id="admin-save-btn" disabled>Save now</button>
+    <span class="admin-status" id="admin-status">View-only mode (login to edit)</span>
+    <span class="admin-status" id="sync-status" style="margin-left:auto"></span>
   </section>
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -1395,7 +1395,7 @@
         return;
       }
       if (!state.isAdmin) {
-        el.textContent = "Firebase: connected";
+        el.textContent = "";
         return;
       }
       if (opts.error || lastSaveError) {
@@ -1416,7 +1416,7 @@
         el.textContent = `Saved ${d.toLocaleTimeString()}`;
         return;
       }
-      el.textContent = "Firebase: connected";
+      el.textContent = "";
     }
 
     async function saveTournamentState() {
@@ -1774,7 +1774,7 @@
       lowerApplyPropagationFrom(0);
       syncGrandFinalFromLower();
       render();
-      queueSaveTournamentState();
+      saveTournamentState();
     }
 
     function syncLowerRoundOneFromUpper() {
@@ -1886,7 +1886,8 @@
       lowerApplyPropagationFrom(roundIdx);
       syncGrandFinalFromLower();
       render();
-      queueSaveTournamentState();
+      // Save immediately so lower winner + grand final teamB are persisted right away.
+      saveTournamentState();
     }
 
     function teamNameForSeed(seedNum) {
@@ -2342,17 +2343,18 @@
       });
 
       document.querySelectorAll(".lower-score-input").forEach((inp) => {
-        // On each keystroke: only update state, NO re-render so caret stays put.
+        // Keystroke: update state only, no re-render, so typing stays smooth.
         inp.addEventListener("input", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
           const side = e.target.dataset.side;
           const row = state.lowerRounds[r][m];
-          const v = String(e.target.value ?? "").trim();
-          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
+          e.target.value = num;
         });
-        // On blur / Enter: commit and propagate winners.
+        // Blur / Enter: full propagation → update grand final → save.
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
