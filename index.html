@@ -1329,7 +1329,14 @@
         const rows = [];
         for (let mi = 0; mi < def.matches; mi++) {
           const srcRow = srcRound[mi];
-          rows.push(srcRow && typeof srcRow === "object" ? { ...createEmptyMatchRow(), ...srcRow } : createEmptyMatchRow());
+          const row = srcRow && typeof srcRow === "object"
+            ? { ...createEmptyMatchRow(), ...srcRow }
+            : createEmptyMatchRow();
+          // Always normalise scores to strings so getWinner and input values
+          // work correctly regardless of whether Firestore returned a number or string.
+          row.scoreA = normalizeScoreValue(row.scoreA);
+          row.scoreB = normalizeScoreValue(row.scoreB);
+          rows.push(row);
         }
         return rows;
       });
@@ -1839,6 +1846,8 @@
       const nextM = sameCount ? matchIdx : Math.floor(matchIdx / 2);
       const slot = sameCount ? "A" : matchIdx % 2 === 0 ? "A" : "B";
       const next = state.lowerRounds[nextR][nextM];
+      // Only reset the team slot — scores belong to the next round and
+      // are entered by admin; clearing them would lose already-entered data.
       if (slot === "A") {
         next.teamA = "";
         next.scoreA = "";
@@ -1846,6 +1855,7 @@
         next.teamB = "";
         next.scoreB = "";
       }
+      // Recursively clear only further downstream rounds.
       lowerClearDownstreamFrom(nextR, nextM);
     }
 
@@ -2301,18 +2311,8 @@
       });
 
       document.querySelectorAll(".score-cell input").forEach((inp) => {
-        // On each keystroke: only update state, NO re-render so caret stays put.
+        // Keystroke: update state only, no re-render so caret stays put.
         inp.addEventListener("input", (e) => {
-          const r = +e.target.dataset.r;
-          const m = +e.target.dataset.m;
-          const side = e.target.dataset.side;
-          const row = state.rounds[r][m];
-          const v = String(e.target.value ?? "").trim();
-          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-        });
-        // On blur / Enter: commit and propagate winners.
-        inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.r;
           const m = +e.target.dataset.m;
           const side = e.target.dataset.side;
@@ -2320,7 +2320,17 @@
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
-          e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
+          e.target.value = num;
+        });
+        // blur: commit and propagate winners (more reliable than 'change').
+        inp.addEventListener("blur", (e) => {
+          const r = +e.target.dataset.r;
+          const m = +e.target.dataset.m;
+          const side = e.target.dataset.side;
+          const row = state.rounds[r][m];
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
           syncAfterEdit(r, m);
         });
         inp.addEventListener("keydown", (e) => {
@@ -2354,8 +2364,10 @@
           else row.scoreB = num;
           e.target.value = num;
         });
-        // Blur / Enter: full propagation → update grand final → save.
-        inp.addEventListener("change", (e) => {
+        // blur: full propagation → update grand final → save.
+        // Using blur (instead of only change) because 'change' won't fire when
+        // the DOM value already matched the old numeric state (e.g. both "0").
+        inp.addEventListener("blur", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
           const side = e.target.dataset.side;
@@ -2363,7 +2375,6 @@
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
-          e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
           syncLowerAfterEdit(r, m);
         });
         inp.addEventListener("keydown", (e) => {
@@ -2490,20 +2501,8 @@
       });
 
       document.querySelectorAll('.court-live-score input[type="number"]').forEach((inp) => {
-        // On each keystroke: only update state, NO re-render so caret stays put.
+        // Keystroke: update state only, no re-render so caret stays put.
         inp.addEventListener("input", (e) => {
-          const courtIdx = +e.target.dataset.court;
-          const ref = state.courts[courtIdx]?.matchRef;
-          const match = getMatchByRef(ref);
-          if (!match) return;
-          const side = e.target.dataset.side;
-          const v = String(e.target.value ?? "").trim();
-          const num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          if (side === "A") match.row.scoreA = num;
-          else match.row.scoreB = num;
-        });
-        // On blur / Enter: commit and propagate winners.
-        inp.addEventListener("change", (e) => {
           const courtIdx = +e.target.dataset.court;
           const ref = state.courts[courtIdx]?.matchRef;
           const match = getMatchByRef(ref);
@@ -2512,7 +2511,18 @@
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") match.row.scoreA = num;
           else match.row.scoreB = num;
-          e.target.value = match.row[side === "A" ? "scoreA" : "scoreB"];
+          e.target.value = num;
+        });
+        // blur: commit and propagate winners (more reliable than 'change').
+        inp.addEventListener("blur", (e) => {
+          const courtIdx = +e.target.dataset.court;
+          const ref = state.courts[courtIdx]?.matchRef;
+          const match = getMatchByRef(ref);
+          if (!match) return;
+          const side = e.target.dataset.side;
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") match.row.scoreA = num;
+          else match.row.scoreB = num;
           if (match.kind === "u") syncAfterEdit(match.r, match.m);
           else syncLowerAfterEdit(match.r, match.m);
         });
