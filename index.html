@@ -1274,8 +1274,9 @@
 
     const ROUNDS = [
       { label: "Round 1", meta: "Best of 3", matches: 4 },
-      { label: "Semi-finals", meta: "Best of 3", matches: 2 },
-      { label: "Final", meta: "Best of 3", matches: 1 },
+      { label: "Upper Semi-finals", meta: "Best of 3", matches: 2 },
+      { label: "Upper Final", meta: "Best of 3", matches: 1 },
+      { label: "Grand Final", meta: "Upper winner vs lower winner", matches: 1 },
     ];
 
     const LOWER_ROUNDS = [
@@ -1299,6 +1300,29 @@
       isAdmin: false,
       adminPassword: ADMIN_PASSWORD,
     };
+
+    function createEmptyMatchRow() {
+      return {
+        seedA: null,
+        seedB: null,
+        teamA: "",
+        teamB: "",
+        scoreA: "",
+        scoreB: "",
+      };
+    }
+
+    function normalizeRoundsForDefs(rawRounds, defs) {
+      return defs.map((def, ri) => {
+        const srcRound = Array.isArray(rawRounds?.[ri]) ? rawRounds[ri] : [];
+        const rows = [];
+        for (let mi = 0; mi < def.matches; mi++) {
+          const srcRow = srcRound[mi];
+          rows.push(srcRow && typeof srcRow === "object" ? { ...createEmptyMatchRow(), ...srcRow } : createEmptyMatchRow());
+        }
+        return rows;
+      });
+    }
 
     const firebaseReady =
       typeof window.firebase !== "undefined" &&
@@ -1460,16 +1484,13 @@
         if (!decodedRounds || !Array.isArray(data.teamList)) return false;
 
         isHydrating = true;
-        state.rounds = decodedRounds;
-        state.lowerRounds =
-          decodedLowerRounds ||
-          LOWER_ROUNDS.map((r) =>
-            Array.from({ length: r.matches }, () => ({ seedA: null, seedB: null, teamA: "", teamB: "", scoreA: "", scoreB: "" }))
-          );
+        state.rounds = normalizeRoundsForDefs(decodedRounds, ROUNDS);
+        state.lowerRounds = normalizeRoundsForDefs(decodedLowerRounds || [], LOWER_ROUNDS);
         state.teamList = data.teamList;
         state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
         state.courts = Array.isArray(data.courts) ? data.courts : [];
         ensureCourtsLength();
+        syncGrandFinalFromLower();
         isHydrating = false;
         return true;
       } catch (err) {
@@ -1568,14 +1589,7 @@
       state.rounds = ROUNDS.map((r, ri) => {
         const matches = [];
         for (let m = 0; m < r.matches; m++) {
-          const row = {
-            seedA: null,
-            seedB: null,
-            teamA: "",
-            teamB: "",
-            scoreA: "",
-            scoreB: "",
-          };
+          const row = createEmptyMatchRow();
           if (ri === 0) {
             row.seedA = seeds[m * 2];
             row.seedB = seeds[m * 2 + 1];
@@ -1589,18 +1603,13 @@
       state.lowerRounds = LOWER_ROUNDS.map((r) => {
         const matches = [];
         for (let m = 0; m < r.matches; m++) {
-          matches.push({
-            seedA: null,
-            seedB: null,
-            teamA: "",
-            teamB: "",
-            scoreA: "",
-            scoreB: "",
-          });
+          matches.push(createEmptyMatchRow());
         }
         return matches;
       });
       syncLowerRoundOneFromUpper();
+      lowerApplyPropagationFrom(0);
+      syncGrandFinalFromLower();
     }
 
     function getWinner(row) {
@@ -1677,6 +1686,7 @@
         syncLowerRoundOneFromUpper();
         lowerApplyPropagationFrom(0);
       }
+      syncGrandFinalFromLower();
       render();
       queueSaveTournamentState();
     }
@@ -1697,6 +1707,21 @@
       }
       lowerClearDownstreamFrom(0, 0);
       lowerClearDownstreamFrom(0, 1);
+    }
+
+    function syncGrandFinalFromLower() {
+      if (!state.rounds?.length) return;
+      const grandFinal = state.rounds[state.rounds.length - 1]?.[0];
+      if (!grandFinal) return;
+      const lowerWinner = lowerChampionName();
+      const nextTeamB = lowerWinner === "—" ? "" : lowerWinner;
+      if (grandFinal.teamB !== nextTeamB) {
+        grandFinal.teamB = nextTeamB;
+        grandFinal.seedB = null;
+        grandFinal.scoreB = "";
+      }
+      if (!grandFinal.teamA) grandFinal.scoreA = "";
+      if (!grandFinal.teamB) grandFinal.scoreB = "";
     }
 
     function lowerClearDownstreamFrom(roundIdx, matchIdx) {
@@ -1747,6 +1772,7 @@
         }
       }
       lowerApplyPropagationFrom(roundIdx);
+      syncGrandFinalFromLower();
       render();
       queueSaveTournamentState();
     }
@@ -2260,6 +2286,7 @@
         html += `<article class="court-card" data-court-idx="${i}">
           <div class="court-card-head">
             <input type="text" class="court-name-input" id="court-name-${i}" data-court="${i}" value="${escapeAttr(court.name || `Court ${i + 1}`)}" ${state.isAdmin ? "" : "disabled"} maxlength="40" />
+            ${ref ? '<span class="court-live">LIVE</span>' : ""}
           </div>
           <div class="court-assign">
             <label for="court-select-${i}">Bracket match</label>
