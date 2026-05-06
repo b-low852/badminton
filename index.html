@@ -1514,6 +1514,10 @@
     }
 
     function ensureAdmin() {
+      if (!state.isAdmin && loadAdminSession()) {
+        state.isAdmin = true;
+        updateAdminUi();
+      }
       if (state.isAdmin) return true;
       alert("Login as admin to edit.");
       return false;
@@ -1882,8 +1886,7 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      // Keep only Round 1 editable; next rounds auto-advance by scores.
-      const disabled = !state.isAdmin || roundIdx > 0;
+      const disabled = !state.isAdmin;
       return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
