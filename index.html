@@ -2300,14 +2300,17 @@
       });
 
       document.querySelectorAll(".score-cell input").forEach((inp) => {
+        // On each keystroke: only update state, NO re-render so caret stays put.
         inp.addEventListener("input", (e) => {
           const r = +e.target.dataset.r;
           const m = +e.target.dataset.m;
           const side = e.target.dataset.side;
-          const num = applyScoreFromInput(r, m, side, e.target.value);
-          e.target.value = num;
-          syncAfterEdit(r, m);
+          const row = state.rounds[r][m];
+          const v = String(e.target.value ?? "").trim();
+          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
         });
+        // On blur / Enter: commit and propagate winners.
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.r;
           const m = +e.target.dataset.m;
@@ -2339,17 +2342,17 @@
       });
 
       document.querySelectorAll(".lower-score-input").forEach((inp) => {
+        // On each keystroke: only update state, NO re-render so caret stays put.
         inp.addEventListener("input", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
           const side = e.target.dataset.side;
           const row = state.lowerRounds[r][m];
-          const num = normalizeScoreValue(e.target.value);
-          if (side === "A") row.scoreA = num;
-          else row.scoreB = num;
-          e.target.value = num;
-          syncLowerAfterEdit(r, m);
+          const v = String(e.target.value ?? "").trim();
+          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
         });
+        // On blur / Enter: commit and propagate winners.
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
@@ -2360,6 +2363,9 @@
           else row.scoreB = num;
           e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
           syncLowerAfterEdit(r, m);
+        });
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") e.target.blur();
         });
       });
     }
@@ -2482,47 +2488,29 @@
       });
 
       document.querySelectorAll('.court-live-score input[type="number"]').forEach((inp) => {
+        // On each keystroke: only update state, NO re-render so caret stays put.
         inp.addEventListener("input", (e) => {
-          const snap = captureFocusSnapshot();
           const courtIdx = +e.target.dataset.court;
           const ref = state.courts[courtIdx]?.matchRef;
           const match = getMatchByRef(ref);
           if (!match) return;
           const side = e.target.dataset.side;
-          let num = "";
-          if (match.kind === "u") {
-            num = applyScoreFromInput(match.r, match.m, side, e.target.value);
-          } else {
-            num = normalizeScoreValue(e.target.value);
-            if (side === "A") match.row.scoreA = num;
-            else match.row.scoreB = num;
-          }
-          e.target.value = num;
-          if (match.kind === "u") {
-            const oa = document.getElementById(`bracket-score-${match.r}-${match.m}-a`);
-            const ob = document.getElementById(`bracket-score-${match.r}-${match.m}-b`);
-            if (oa) oa.value = state.rounds[match.r][match.m].scoreA;
-            if (ob) ob.value = state.rounds[match.r][match.m].scoreB;
-          } else {
-            syncLowerAfterEdit(match.r, match.m);
-            restoreFocusSnapshot(snap);
-            return;
-          }
-          renderCourts();
-          restoreFocusSnapshot(snap);
-          queueSaveTournamentState();
+          const v = String(e.target.value ?? "").trim();
+          const num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          if (side === "A") match.row.scoreA = num;
+          else match.row.scoreB = num;
         });
+        // On blur / Enter: commit and propagate winners.
         inp.addEventListener("change", (e) => {
           const courtIdx = +e.target.dataset.court;
           const ref = state.courts[courtIdx]?.matchRef;
           const match = getMatchByRef(ref);
           if (!match) return;
           const side = e.target.dataset.side;
-          const row = match.row;
           const num = normalizeScoreValue(e.target.value);
-          if (side === "A") row.scoreA = num;
-          else row.scoreB = num;
-          e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
+          if (side === "A") match.row.scoreA = num;
+          else match.row.scoreB = num;
+          e.target.value = match.row[side === "A" ? "scoreA" : "scoreB"];
           if (match.kind === "u") syncAfterEdit(match.r, match.m);
           else syncLowerAfterEdit(match.r, match.m);
         });
