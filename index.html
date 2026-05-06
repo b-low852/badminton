@@ -2326,13 +2326,16 @@
         });
       });
 
-      document.querySelectorAll(".score-cell input").forEach((inp) => {
+      // Explicitly exclude lower-score-input because lower bracket reuses .score-cell
+      document.querySelectorAll(".score-cell input:not(.lower-score-input)").forEach((inp) => {
         // Keystroke: update state only, no re-render so caret stays put.
         inp.addEventListener("input", (e) => {
           const r = +e.target.dataset.r;
           const m = +e.target.dataset.m;
+          if (!Number.isFinite(r) || !Number.isFinite(m)) return;
           const side = e.target.dataset.side;
-          const row = state.rounds[r][m];
+          const row = state.rounds[r]?.[m];
+          if (!row) return;
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
@@ -2342,8 +2345,10 @@
         inp.addEventListener("blur", (e) => {
           const r = +e.target.dataset.r;
           const m = +e.target.dataset.m;
+          if (!Number.isFinite(r) || !Number.isFinite(m)) return;
           const side = e.target.dataset.side;
-          const row = state.rounds[r][m];
+          const row = state.rounds[r]?.[m];
+          if (!row) return;
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
@@ -2373,21 +2378,23 @@
         inp.addEventListener("input", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
+          if (!Number.isFinite(r) || !Number.isFinite(m)) return;
           const side = e.target.dataset.side;
-          const row = state.lowerRounds[r][m];
+          const row = state.lowerRounds[r]?.[m];
+          if (!row) return;
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
           e.target.value = num;
         });
         // blur: full propagation → update grand final → save.
-        // Using blur (instead of only change) because 'change' won't fire when
-        // the DOM value already matched the old numeric state (e.g. both "0").
         inp.addEventListener("blur", (e) => {
           const r = +e.target.dataset.lr;
           const m = +e.target.dataset.lm;
+          if (!Number.isFinite(r) || !Number.isFinite(m)) return;
           const side = e.target.dataset.side;
-          const row = state.lowerRounds[r][m];
+          const row = state.lowerRounds[r]?.[m];
+          if (!row) return;
           const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
@@ -2520,6 +2527,7 @@
         // Keystroke: update state only, no re-render so caret stays put.
         inp.addEventListener("input", (e) => {
           const courtIdx = +e.target.dataset.court;
+          if (!Number.isFinite(courtIdx)) return;
           const ref = state.courts[courtIdx]?.matchRef;
           const match = getMatchByRef(ref);
           if (!match) return;
@@ -2532,6 +2540,7 @@
         // blur: commit and propagate winners (more reliable than 'change').
         inp.addEventListener("blur", (e) => {
           const courtIdx = +e.target.dataset.court;
+          if (!Number.isFinite(courtIdx)) return;
           const ref = state.courts[courtIdx]?.matchRef;
           const match = getMatchByRef(ref);
           if (!match) return;
