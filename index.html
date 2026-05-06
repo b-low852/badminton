@@ -1205,6 +1205,7 @@
     let isHydrating = false;
     let persistTimer = null;
     let lastSavedAtMs = null;
+    let lastSaveError = null;
     const ADMIN_SESSION_KEY = "badminton:isAdmin";
 
     function loadAdminSession() {
@@ -1235,6 +1236,11 @@
         el.textContent = "Firebase: connected";
         return;
       }
+      if (opts.error || lastSaveError) {
+        const msg = String(opts.error || lastSaveError || "Save failed").trim();
+        el.textContent = `Save failed${msg ? `: ${msg}` : ""}`;
+        return;
+      }
       if (opts.saving) {
         el.textContent = "Saving…";
         return;
@@ -1254,6 +1260,7 @@
     async function saveTournamentState() {
       if (!db || isHydrating) return;
       try {
+        lastSaveError = null;
         updateSyncUi({ saving: true });
         await db.doc(TOURNAMENT_DOC).set(
           {
@@ -1271,7 +1278,12 @@
         setTimeout(() => updateSyncUi(), 1000);
       } catch (err) {
         console.error("Failed to save tournament state:", err);
-        updateSyncUi();
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String(err.message || "")
+            : String(err || "");
+        lastSaveError = msg || "Unknown error";
+        updateSyncUi({ error: lastSaveError });
       }
     }
 
@@ -1528,7 +1540,9 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${state.isAdmin ? "" : "disabled"}>${opts.join("")}</select>`;
+      const lockedByRound = roundIdx > 0;
+      const disabled = !state.isAdmin || lockedByRound;
+      return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
     function escapeAttr(s) {
