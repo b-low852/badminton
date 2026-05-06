@@ -86,6 +86,16 @@
       align-items: center;
     }
 
+    /* Full-bleed admin bar (stretch to viewport edges) */
+    .admin-panel {
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
+      margin-right: calc(50% - 50vw);
+      border-radius: 0;
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+
     .admin-panel strong {
       font-size: 0.88rem;
       margin-right: 0.25rem;
@@ -1026,7 +1036,9 @@
       <input type="password" id="admin-password" placeholder="Enter admin password" />
       <button type="button" class="admin-login-btn" id="admin-login-btn">Login</button>
       <button type="button" class="admin-logout-btn" id="admin-logout-btn">Logout</button>
+      <button type="button" class="admin-logout-btn" id="admin-save-btn" disabled>Save now</button>
       <span class="admin-status" id="admin-status">View-only mode (login to edit)</span>
+      <span class="admin-status" id="sync-status" style="margin-left:auto"></span>
     </section>
 
     <section class="event-section" id="info-card" aria-labelledby="event-info-heading" role="button" tabindex="0" aria-label="Open poster and info">
@@ -1126,6 +1138,8 @@
     <ul class="team-chips" id="team-chips"></ul>
   </section>
 
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script>
     const DEFAULT_TEAM_NAMES = [
       "Looney Tunes",
@@ -1139,6 +1153,15 @@
     ];
 
     const ADMIN_PASSWORD = "carlsoncomel";
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyDyshcy-hqXXxUJ6auQK--vapDUujX7VRA",
+      authDomain: "badminton-58417.firebaseapp.com",
+      projectId: "badminton-58417",
+      storageBucket: "badminton-58417.firebasestorage.app",
+      messagingSenderId: "953041309904",
+      appId: "1:953041309904:web:95ebbd7dc3271b7e338ed5",
+      measurementId: "G-VJZ13ZYPKB",
+    };
 
     const ROUNDS = [
       { label: "Round 1", meta: "Best of 3", matches: 4 },
@@ -1159,7 +1182,129 @@
       courtCount: 2,
       courts: [{ matchRef: null, name: "Court 1" }, { matchRef: null, name: "Court 2" }],
       isAdmin: false,
+      adminPassword: ADMIN_PASSWORD,
     };
+
+    const firebaseReady =
+      typeof window.firebase !== "undefined" &&
+      FIREBASE_CONFIG.projectId &&
+      FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
+    const db = firebaseReady ? firebase.initializeApp(FIREBASE_CONFIG).firestore() : null;
+    const TOURNAMENT_DOC = "badminton/live";
+    const SETTINGS_DOC = "badminton/settings";
+    let isHydrating = false;
+    let persistTimer = null;
+    let lastSavedAtMs = null;
+
+    function updateSyncUi(opts = {}) {
+      const el = document.getElementById("sync-status");
+      const saveBtn = document.getElementById("admin-save-btn");
+      if (saveBtn) saveBtn.disabled = !state.isAdmin || !db;
+      if (!el) return;
+      if (!db) {
+        el.textContent = "Firebase: not connected";
+        return;
+      }
+      if (!state.isAdmin) {
+        el.textContent = "Firebase: connected";
+        return;
+      }
+      if (opts.saving) {
+        el.textContent = "Saving…";
+        return;
+      }
+      if (opts.saved) {
+        el.textContent = "Saved";
+        return;
+      }
+      if (typeof lastSavedAtMs === "number") {
+        const d = new Date(lastSavedAtMs);
+        el.textContent = `Saved ${d.toLocaleTimeString()}`;
+        return;
+      }
+      el.textContent = "Firebase: connected";
+    }
+
+    async function saveTournamentState() {
+      if (!db || isHydrating) return;
+      try {
+        updateSyncUi({ saving: true });
+        await db.doc(TOURNAMENT_DOC).set(
+          {
+            rounds: state.rounds,
+            teamList: state.teamList,
+            courtCount: state.courtCount,
+            courts: state.courts,
+            champion: championName(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        lastSavedAtMs = Date.now();
+        updateSyncUi({ saved: true });
+        setTimeout(() => updateSyncUi(), 1000);
+      } catch (err) {
+        console.error("Failed to save tournament state:", err);
+        updateSyncUi();
+      }
+    }
+
+    async function saveAdminPassword(password) {
+      if (!db) return;
+      try {
+        await db.doc(SETTINGS_DOC).set(
+          {
+            adminPassword: password,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("Failed to save admin password:", err);
+      }
+    }
+
+    function queueSaveTournamentState() {
+      if (!db || isHydrating) return;
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => {
+        saveTournamentState();
+      }, 250);
+    }
+
+    async function loadFromFirestore() {
+      if (!db) return false;
+      try {
+        const settingsSnap = await db.doc(SETTINGS_DOC).get();
+        if (settingsSnap.exists) {
+          const settings = settingsSnap.data() || {};
+          if (typeof settings.adminPassword === "string" && settings.adminPassword.trim()) {
+            state.adminPassword = settings.adminPassword;
+          }
+        } else {
+          await saveAdminPassword(state.adminPassword);
+        }
+
+        const tournamentSnap = await db.doc(TOURNAMENT_DOC).get();
+        if (!tournamentSnap.exists) return false;
+
+        const data = tournamentSnap.data() || {};
+        if (!Array.isArray(data.rounds) || !Array.isArray(data.teamList)) return false;
+
+        isHydrating = true;
+        state.rounds = data.rounds;
+        state.teamList = data.teamList;
+        state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
+        state.courts = Array.isArray(data.courts) ? data.courts : [];
+        ensureCourtsLength();
+        isHydrating = false;
+        return true;
+      } catch (err) {
+        console.error("Failed to load Firestore data:", err);
+        isHydrating = false;
+        return false;
+      }
+    }
 
     function ensureAdmin() {
       if (state.isAdmin) return true;
@@ -1179,6 +1324,7 @@
       logoutBtn.disabled = !state.isAdmin;
       pwd.disabled = state.isAdmin;
       if (!state.isAdmin) pwd.value = "";
+      updateSyncUi();
     }
 
     function ensureCourtsLength() {
@@ -1199,6 +1345,7 @@
       state.courts[courtIdx].name = name || fallback;
       renderCourts();
       bindCourtEvents();
+      queueSaveTournamentState();
     }
 
     function allMatchRefs() {
@@ -1226,6 +1373,7 @@
       }
       state.courts[courtIdx].matchRef = val;
       render();
+      queueSaveTournamentState();
     }
 
     function setCourtCount(n) {
@@ -1239,6 +1387,7 @@
       if (minus) minus.disabled = state.courtCount <= MIN_COURTS;
       if (plus) plus.disabled = state.courtCount >= MAX_COURTS;
       render();
+      queueSaveTournamentState();
     }
 
     function buildInitialState() {
@@ -1335,6 +1484,7 @@
       }
       applyPropagationFrom(0);
       render();
+      queueSaveTournamentState();
     }
 
     function teamNameForSeed(seedNum) {
@@ -1594,6 +1744,7 @@
       if (state.teamList.some((t) => t.toLowerCase() === lower)) return;
       state.teamList.unshift(name);
       render();
+      queueSaveTournamentState();
     }
 
     function removeTeam(name) {
@@ -1635,6 +1786,7 @@
       }
       applyPropagationFrom(0);
       render();
+      queueSaveTournamentState();
     }
 
     function applyScoreFromInput(r, m, side, rawValue) {
@@ -1667,6 +1819,7 @@
           const num = applyScoreFromInput(r, m, side, e.target.value);
           e.target.value = num;
           renderCourts();
+          queueSaveTournamentState();
         });
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.r;
@@ -1778,6 +1931,7 @@
           if (ob) ob.value = state.rounds[r][m].scoreB;
           renderCourts();
           restoreFocusSnapshot(snap);
+          queueSaveTournamentState();
         });
         inp.addEventListener("change", (e) => {
           const courtIdx = +e.target.dataset.court;
@@ -1798,17 +1952,27 @@
       });
     }
 
-    state.teamList = DEFAULT_TEAM_NAMES.slice();
-    buildInitialState();
-    render();
-    updateAdminUi();
+    async function initializeAppState() {
+      const loaded = await loadFromFirestore();
+      if (!loaded) {
+        state.teamList = DEFAULT_TEAM_NAMES.slice();
+        buildInitialState();
+        queueSaveTournamentState();
+      }
+      render();
+      updateAdminUi();
+      if (!firebaseReady) {
+        console.warn("Firebase is not configured. Update FIREBASE_CONFIG in index.html");
+      }
+    }
 
     document.getElementById("admin-login-btn").addEventListener("click", () => {
       const pwd = document.getElementById("admin-password");
       if (!pwd) return;
-      if (pwd.value === ADMIN_PASSWORD) {
+      if (pwd.value === state.adminPassword) {
         state.isAdmin = true;
         render();
+        saveAdminPassword(state.adminPassword);
       } else {
         alert("Incorrect password.");
       }
@@ -1826,6 +1990,11 @@
       state.isAdmin = false;
       updateAdminUi();
       render();
+    });
+
+    document.getElementById("admin-save-btn").addEventListener("click", async () => {
+      if (!ensureAdmin()) return;
+      await saveTournamentState();
     });
 
     document.getElementById("court-minus").addEventListener("click", () => {
@@ -1954,6 +2123,8 @@
     posterModal?.addEventListener("click", (e) => {
       if (e.target === posterModal) setPosterModalOpen(false);
     });
+
+    initializeAppState();
   </script>
 </body>
 </html>

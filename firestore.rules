@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tournament state document used by the bracket app
+    match /badminton/live {
+      allow read, write: if true;
+    }
+
+    // App settings document (admin password currently stored here)
+    match /badminton/settings {
+      allow read, write: if true;
+    }
+
+    // Deny everything else by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
