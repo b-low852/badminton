@@ -1432,6 +1432,7 @@
             courtCount: state.courtCount,
             courts: state.courts,
             champion: championName(),
+            lowerWinner: lowerChampionName(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
@@ -1912,8 +1913,8 @@
       const matchRef = `u-${roundIdx}-${matchIdx}`;
       const isLive = state.courts?.some((c) => canonicalMatchRef(c?.matchRef) === matchRef);
 
-      const seedA = row.seedA != null ? row.seedA : "—";
-      const seedB = row.seedB != null ? row.seedB : "—";
+      const seedA = roundIdx === 0 && row.seedA != null ? row.seedA : "—";
+      const seedB = roundIdx === 0 && row.seedB != null ? row.seedB : "—";
 
       return `
         <div class="match" data-match="${matchRef}">
@@ -2480,6 +2481,10 @@
             const ob = document.getElementById(`bracket-score-${match.r}-${match.m}-b`);
             if (oa) oa.value = state.rounds[match.r][match.m].scoreA;
             if (ob) ob.value = state.rounds[match.r][match.m].scoreB;
+          } else {
+            syncLowerAfterEdit(match.r, match.m);
+            restoreFocusSnapshot(snap);
+            return;
           }
           renderCourts();
           restoreFocusSnapshot(snap);
