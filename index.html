@@ -1913,8 +1913,8 @@
       const matchRef = `u-${roundIdx}-${matchIdx}`;
       const isLive = state.courts?.some((c) => canonicalMatchRef(c?.matchRef) === matchRef);
 
-      const seedA = roundIdx === 0 && row.seedA != null ? row.seedA : "—";
-      const seedB = roundIdx === 0 && row.seedB != null ? row.seedB : "—";
+      const seedA = row.seedA != null ? row.seedA : "—";
+      const seedB = row.seedB != null ? row.seedB : "—";
 
       return `
         <div class="match" data-match="${matchRef}">
