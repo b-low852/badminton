@@ -1696,6 +1696,14 @@
       return na > nb ? "A" : "B";
     }
 
+    function normalizeScoreValue(rawValue) {
+      const v = String(rawValue ?? "").trim();
+      if (v === "") return "";
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "";
+      return String(Math.max(0, Math.min(99, n)));
+    }
+
     function clearDownstreamFrom(roundIdx, matchIdx) {
       const nextR = roundIdx + 1;
       if (nextR >= state.rounds.length) return;
@@ -2272,8 +2280,7 @@
 
     function applyScoreFromInput(r, m, side, rawValue) {
       const row = state.rounds[r][m];
-      const v = String(rawValue ?? "").trim();
-      const num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+      const num = normalizeScoreValue(rawValue);
       if (side === "A") row.scoreA = num;
       else row.scoreB = num;
       return num;
@@ -2306,9 +2313,9 @@
           const m = +e.target.dataset.m;
           const side = e.target.dataset.side;
           const row = state.rounds[r][m];
-          const v = e.target.value.trim();
-          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
           e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
           syncAfterEdit(r, m);
         });
@@ -2337,8 +2344,7 @@
           const m = +e.target.dataset.lm;
           const side = e.target.dataset.side;
           const row = state.lowerRounds[r][m];
-          const v = String(e.target.value ?? "").trim();
-          const num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          const num = normalizeScoreValue(e.target.value);
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
           e.target.value = num;
@@ -2349,9 +2355,9 @@
           const m = +e.target.dataset.lm;
           const side = e.target.dataset.side;
           const row = state.lowerRounds[r][m];
-          const v = e.target.value.trim();
-          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
           e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
           syncLowerAfterEdit(r, m);
         });
@@ -2487,8 +2493,7 @@
           if (match.kind === "u") {
             num = applyScoreFromInput(match.r, match.m, side, e.target.value);
           } else {
-            const v = String(e.target.value ?? "").trim();
-            num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+            num = normalizeScoreValue(e.target.value);
             if (side === "A") match.row.scoreA = num;
             else match.row.scoreB = num;
           }
@@ -2514,9 +2519,9 @@
           if (!match) return;
           const side = e.target.dataset.side;
           const row = match.row;
-          const v = e.target.value.trim();
-          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
-          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          const num = normalizeScoreValue(e.target.value);
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
           e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
           if (match.kind === "u") syncAfterEdit(match.r, match.m);
           else syncLowerAfterEdit(match.r, match.m);
