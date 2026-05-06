@@ -1525,7 +1525,9 @@
         state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
         state.courts = Array.isArray(data.courts) ? data.courts : [];
         ensureCourtsLength();
-        syncLowerRoundTwoFromUpperSemis();
+        // Do NOT call syncLowerRoundTwoFromUpperSemis here — it calls
+        // lowerClearDownstreamFrom which wipes Lower Final scores that were
+        // just loaded from Firestore. The stored data is already consistent.
         lowerApplyPropagationFrom(0);
         syncGrandFinalFromLower();
         isHydrating = false;
@@ -1809,13 +1811,19 @@
         const mB = r0[i * 2 + 1];
         const wA = getWinner(mA);
         const wB = getWinner(mB);
-        l0[i].teamA = wA === "A" ? mA.teamB : wA === "B" ? mA.teamA : "";
-        l0[i].teamB = wB === "A" ? mB.teamB : wB === "B" ? mB.teamA : "";
-        l0[i].scoreA = "";
-        l0[i].scoreB = "";
+        const newA = wA === "A" ? mA.teamB : wA === "B" ? mA.teamA : "";
+        const newB = wB === "A" ? mB.teamB : wB === "B" ? mB.teamA : "";
+        if (l0[i].teamA !== newA) {
+          l0[i].teamA = newA;
+          l0[i].scoreA = "";
+          lowerClearDownstreamFrom(0, i);
+        }
+        if (l0[i].teamB !== newB) {
+          l0[i].teamB = newB;
+          l0[i].scoreB = "";
+          lowerClearDownstreamFrom(0, i);
+        }
       }
-      lowerClearDownstreamFrom(0, 0);
-      lowerClearDownstreamFrom(0, 1);
     }
 
     function syncLowerRoundTwoFromUpperSemis() {
@@ -1830,12 +1838,13 @@
         if (lowerSemis[i].teamB !== loser) {
           lowerSemis[i].teamB = loser;
           lowerSemis[i].scoreB = "";
+          // Only cascade-clear when the incoming team actually changed —
+          // avoids wiping Lower Final scores on a no-op call (e.g. on load).
+          lowerClearDownstreamFrom(1, i);
         }
         if (!lowerSemis[i].teamA) lowerSemis[i].scoreA = "";
         if (!lowerSemis[i].teamB) lowerSemis[i].scoreB = "";
       }
-      lowerClearDownstreamFrom(1, 0);
-      lowerClearDownstreamFrom(1, 1);
     }
 
     function syncGrandFinalFromLower() {
