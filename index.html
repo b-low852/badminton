@@ -1205,6 +1205,22 @@
     let isHydrating = false;
     let persistTimer = null;
     let lastSavedAtMs = null;
+    const ADMIN_SESSION_KEY = "badminton:isAdmin";
+
+    function loadAdminSession() {
+      try {
+        return localStorage.getItem(ADMIN_SESSION_KEY) === "1";
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function setAdminSession(on) {
+      try {
+        if (on) localStorage.setItem(ADMIN_SESSION_KEY, "1");
+        else localStorage.removeItem(ADMIN_SESSION_KEY);
+      } catch (_) {}
+    }
 
     function updateSyncUi(opts = {}) {
       const el = document.getElementById("sync-status");
@@ -1969,6 +1985,8 @@
         buildInitialState();
         queueSaveTournamentState();
       }
+      // Keep admin logged-in on refresh (same browser)
+      state.isAdmin = loadAdminSession();
       render();
       updateAdminUi();
       if (!firebaseReady) {
@@ -1981,6 +1999,7 @@
       if (!pwd) return;
       if (pwd.value === state.adminPassword) {
         state.isAdmin = true;
+        setAdminSession(true);
         render();
         saveAdminPassword(state.adminPassword);
       } else {
@@ -1998,6 +2017,7 @@
 
     document.getElementById("admin-logout-btn").addEventListener("click", () => {
       state.isAdmin = false;
+      setAdminSession(false);
       updateAdminUi();
       render();
     });
