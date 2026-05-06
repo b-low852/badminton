@@ -1027,9 +1027,104 @@
       color: var(--muted);
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 900px) {
+      body {
+        /* Better rendering/performance on mobile browsers */
+        background-attachment: scroll;
+        background-position: top center;
+      }
+
+      header {
+        padding: 1rem 0.85rem;
+      }
+
+      .container {
+        padding: 0 0.85rem;
+      }
+
+      .admin-panel,
+      .event-section {
+        padding-left: 0.85rem;
+        padding-right: 0.85rem;
+      }
+
+      .admin-panel input[type="password"] {
+        min-width: 0;
+        flex: 1 1 160px;
+      }
+
+      .admin-panel button {
+        flex: 0 0 auto;
+      }
+
+      .admin-status {
+        width: 100%;
+      }
+
+      #sync-status {
+        margin-left: 0 !important;
+      }
+
+      .event-section h2 {
+        font-size: 1rem;
+      }
+
+      .event-list,
+      .rules-list {
+        font-size: 0.86rem;
+      }
+
+      .menu-bar {
+        margin-top: 0.75rem;
+      }
+
+      .bracket-wrap {
+        padding: 0.85rem;
+        padding-bottom: 1.5rem;
+      }
+
       .round {
         min-width: 200px;
+        padding: 0 0.65rem;
+      }
+
+      .round:first-child {
+        padding-left: 0;
+      }
+
+      .champion {
+        min-width: 170px;
+      }
+
+      .courts-section {
+        padding: 0.85rem;
+      }
+
+      .court-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      header h1 {
+        font-size: 1.15rem;
+      }
+
+      header p {
+        font-size: 0.82rem;
+      }
+
+      .admin-panel strong {
+        width: 100%;
+      }
+
+      .admin-panel input[type="password"],
+      .admin-panel button {
+        width: 100%;
+      }
+
+      .round {
+        min-width: 188px;
       }
     }
   </style>
@@ -1085,6 +1180,10 @@
 
   <div class="bracket-wrap">
     <div class="bracket" id="bracket"></div>
+  </div>
+
+  <div class="bracket-wrap">
+    <div class="bracket" id="lower-bracket"></div>
   </div>
 
   <div class="info-modal" id="info-modal" role="dialog" aria-modal="true" aria-label="Poster and info">
@@ -1179,6 +1278,11 @@
       { label: "Final", meta: "Best of 3", matches: 1 },
     ];
 
+    const LOWER_ROUNDS = [
+      { label: "Lower Round 1", meta: "Best of 3", matches: 2 },
+      { label: "Lower Final", meta: "Best of 3", matches: 1 },
+    ];
+
     const initialSeeds = [
       [1, 8, 4, 5, 3, 6, 2, 7],
     ];
@@ -1188,6 +1292,7 @@
 
     const state = {
       rounds: [],
+      lowerRounds: [],
       teamList: [],
       courtCount: 2,
       courts: [{ matchRef: null, name: "Court 1" }, { matchRef: null, name: "Court 2" }],
@@ -1287,6 +1392,7 @@
         await db.doc(TOURNAMENT_DOC).set(
           {
             rounds: encodeRoundsForFirestore(state.rounds),
+            lowerRounds: encodeRoundsForFirestore(state.lowerRounds),
             teamList: state.teamList,
             courtCount: state.courtCount,
             courts: state.courts,
@@ -1350,10 +1456,16 @@
 
         const data = tournamentSnap.data() || {};
         const decodedRounds = decodeRoundsFromFirestore(data.rounds);
+        const decodedLowerRounds = decodeRoundsFromFirestore(data.lowerRounds);
         if (!decodedRounds || !Array.isArray(data.teamList)) return false;
 
         isHydrating = true;
         state.rounds = decodedRounds;
+        state.lowerRounds =
+          decodedLowerRounds ||
+          LOWER_ROUNDS.map((r) =>
+            Array.from({ length: r.matches }, () => ({ seedA: null, seedB: null, teamA: "", teamB: "", scoreA: "", scoreB: "" }))
+          );
         state.teamList = data.teamList;
         state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
         state.courts = Array.isArray(data.courts) ? data.courts : [];
@@ -1474,6 +1586,21 @@
         }
         return matches;
       });
+      state.lowerRounds = LOWER_ROUNDS.map((r) => {
+        const matches = [];
+        for (let m = 0; m < r.matches; m++) {
+          matches.push({
+            seedA: null,
+            seedB: null,
+            teamA: "",
+            teamB: "",
+            scoreA: "",
+            scoreB: "",
+          });
+        }
+        return matches;
+      });
+      syncLowerRoundOneFromUpper();
     }
 
     function getWinner(row) {
@@ -1546,6 +1673,80 @@
       // Recalculate only from the edited round onward so manual selections
       // in later rounds are not overwritten by earlier rounds.
       applyPropagationFrom(roundIdx);
+      if (roundIdx === 0) {
+        syncLowerRoundOneFromUpper();
+        lowerApplyPropagationFrom(0);
+      }
+      render();
+      queueSaveTournamentState();
+    }
+
+    function syncLowerRoundOneFromUpper() {
+      if (!state.rounds?.[0] || !state.lowerRounds?.[0]) return;
+      const r0 = state.rounds[0];
+      const l0 = state.lowerRounds[0];
+      for (let i = 0; i < l0.length; i++) {
+        const mA = r0[i * 2];
+        const mB = r0[i * 2 + 1];
+        const wA = getWinner(mA);
+        const wB = getWinner(mB);
+        l0[i].teamA = wA === "A" ? mA.teamB : wA === "B" ? mA.teamA : "";
+        l0[i].teamB = wB === "A" ? mB.teamB : wB === "B" ? mB.teamA : "";
+        l0[i].scoreA = "";
+        l0[i].scoreB = "";
+      }
+      lowerClearDownstreamFrom(0, 0);
+      lowerClearDownstreamFrom(0, 1);
+    }
+
+    function lowerClearDownstreamFrom(roundIdx, matchIdx) {
+      const nextR = roundIdx + 1;
+      if (nextR >= state.lowerRounds.length) return;
+      const nextM = Math.floor(matchIdx / 2);
+      const slot = matchIdx % 2 === 0 ? "A" : "B";
+      const next = state.lowerRounds[nextR][nextM];
+      if (slot === "A") {
+        next.teamA = "";
+        next.scoreA = "";
+      } else {
+        next.teamB = "";
+        next.scoreB = "";
+      }
+      lowerClearDownstreamFrom(nextR, nextM);
+    }
+
+    function lowerPropagateWinner(roundIdx, matchIdx) {
+      const row = state.lowerRounds[roundIdx][matchIdx];
+      const w = getWinner(row);
+      const nextR = roundIdx + 1;
+      if (nextR >= state.lowerRounds.length) return;
+      const nextM = Math.floor(matchIdx / 2);
+      const slot = matchIdx % 2 === 0 ? "A" : "B";
+      const next = state.lowerRounds[nextR][nextM];
+      if (w === "A") next[slot === "A" ? "teamA" : "teamB"] = row.teamA;
+      else if (w === "B") next[slot === "A" ? "teamA" : "teamB"] = row.teamB;
+    }
+
+    function lowerApplyPropagationFrom(roundIdx) {
+      const matches = state.lowerRounds[roundIdx];
+      for (let i = 0; i < matches.length; i++) {
+        lowerPropagateWinner(roundIdx, i);
+      }
+      if (roundIdx + 1 < state.lowerRounds.length) lowerApplyPropagationFrom(roundIdx + 1);
+    }
+
+    function syncLowerAfterEdit(roundIdx, matchIdx) {
+      lowerClearDownstreamFrom(roundIdx, matchIdx);
+      for (let r = 0; r < state.lowerRounds.length; r++) {
+        for (let m = 0; m < state.lowerRounds[r].length; m++) {
+          if (r > 0) {
+            const row = state.lowerRounds[r][m];
+            if (!row.teamA) row.scoreA = "";
+            if (!row.teamB) row.scoreB = "";
+          }
+        }
+      }
+      lowerApplyPropagationFrom(roundIdx);
       render();
       queueSaveTournamentState();
     }
@@ -1710,6 +1911,14 @@
       return "—";
     }
 
+    function lowerChampionName() {
+      const finalRow = state.lowerRounds[state.lowerRounds.length - 1][0];
+      const w = getWinner(finalRow);
+      if (w === "A") return finalRow.teamA || "—";
+      if (w === "B") return finalRow.teamB || "—";
+      return "—";
+    }
+
     function captureFocusSnapshot() {
       const el = document.activeElement;
       if (!el || (el.tagName !== "INPUT" && el.tagName !== "SELECT")) return null;
@@ -1739,8 +1948,10 @@
     function render() {
       const snap = captureFocusSnapshot();
       const bracket = document.getElementById("bracket");
+      const lowerBracket = document.getElementById("lower-bracket");
       ensureCourtsLength();
       let html = `<svg class="bracket-lines" id="bracket-lines" aria-hidden="true"></svg>`;
+      let lowerHtml = "";
 
       ROUNDS.forEach((meta, ri) => {
         html += `<div class="round" data-round="${ri}">
@@ -1761,8 +1972,54 @@
         <p class="hint">Winner is set when both teams are chosen and scores differ.</p>
       </div>`;
 
+      lowerHtml += `<div class="round">
+        <div class="round-header">
+          <div class="round-title">Lower Bracket</div>
+          <div class="round-meta">Double-elimination path</div>
+        </div>
+      </div>`;
+
+      LOWER_ROUNDS.forEach((meta, ri) => {
+        lowerHtml += `<div class="round" data-lower-round="${ri}">
+          <div class="round-header">
+            <div class="round-title">${meta.label}</div>
+            <div class="round-meta">${meta.meta}</div>
+          </div>
+          <div class="round-matches">`;
+        for (let mi = 0; mi < state.lowerRounds[ri].length; mi++) {
+          const row = state.lowerRounds[ri][mi];
+          const w = getWinner(row);
+          lowerHtml += `
+            <div class="match">
+              <div class="match-row${w === "A" ? " winner" : ""}">
+                <span class="seed">—</span>
+                <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "A")}</div>
+                <div class="score-cell">
+                  <input type="number" min="0" max="99" placeholder="0" data-lr="${ri}" data-lm="${mi}" data-side="A" class="lower-score-input" value="${row.scoreA}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                </div>
+              </div>
+              <div class="match-row${w === "B" ? " winner" : ""}">
+                <span class="seed">—</span>
+                <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "B")}</div>
+                <div class="score-cell">
+                  <input type="number" min="0" max="99" placeholder="0" data-lr="${ri}" data-lm="${mi}" data-side="B" class="lower-score-input" value="${row.scoreB}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                </div>
+              </div>
+            </div>`;
+        }
+        lowerHtml += `</div></div>`;
+      });
+
+      lowerHtml += `<div class="champion">
+        <span class="champion-label">Lower Winner</span>
+        <div class="champion-name">${escapeHtml(lowerChampionName())}</div>
+        <p class="hint">Round 1 losers auto-drop here after scores are entered.</p>
+      </div>`;
+
       bracket.innerHTML = html;
+      if (lowerBracket) lowerBracket.innerHTML = lowerHtml;
       bindBracketEvents();
+      bindLowerBracketEvents();
       renderCourts();
       bindCourtEvents();
       renderTeamChips();
@@ -1772,6 +2029,19 @@
       requestAnimationFrame(() => {
         drawBracketConnectors();
       });
+    }
+
+    function teamSelectHtmlForLower(roundIdx, matchIdx, side) {
+      const row = state.lowerRounds[roundIdx][matchIdx];
+      const key = side === "A" ? "teamA" : "teamB";
+      const val = row[key] || "";
+      const options = ["", ...state.teamList];
+      const opts = options.map(
+        (t) =>
+          `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
+      );
+      const disabled = !state.isAdmin || roundIdx === 0;
+      return `<select data-lr="${roundIdx}" data-lm="${matchIdx}" data-side="${side}" class="lower-team-select" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
     function escapeHtml(s) {
@@ -1898,6 +2168,46 @@
         });
         inp.addEventListener("keydown", (e) => {
           if (e.key === "Enter") e.target.blur();
+        });
+      });
+    }
+
+    function bindLowerBracketEvents() {
+      document.querySelectorAll(".lower-team-select").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const r = +e.target.dataset.lr;
+          const m = +e.target.dataset.lm;
+          const side = e.target.dataset.side;
+          const row = state.lowerRounds[r][m];
+          if (side === "A") row.teamA = e.target.value;
+          else row.teamB = e.target.value;
+          syncLowerAfterEdit(r, m);
+        });
+      });
+
+      document.querySelectorAll(".lower-score-input").forEach((inp) => {
+        inp.addEventListener("input", (e) => {
+          const r = +e.target.dataset.lr;
+          const m = +e.target.dataset.lm;
+          const side = e.target.dataset.side;
+          const row = state.lowerRounds[r][m];
+          const v = String(e.target.value ?? "").trim();
+          const num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          if (side === "A") row.scoreA = num;
+          else row.scoreB = num;
+          e.target.value = num;
+          queueSaveTournamentState();
+        });
+        inp.addEventListener("change", (e) => {
+          const r = +e.target.dataset.lr;
+          const m = +e.target.dataset.lm;
+          const side = e.target.dataset.side;
+          const row = state.lowerRounds[r][m];
+          const v = e.target.value.trim();
+          if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+          e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
+          syncLowerAfterEdit(r, m);
         });
       });
     }
