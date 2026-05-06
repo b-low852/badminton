@@ -1208,6 +1208,28 @@
     let lastSaveError = null;
     const ADMIN_SESSION_KEY = "badminton:isAdmin";
 
+    function encodeRoundsForFirestore(rounds) {
+      // Firestore does not allow array values that directly contain nested arrays.
+      // Store rounds as an object map instead of an array-of-arrays.
+      const out = {};
+      if (!Array.isArray(rounds)) return out;
+      rounds.forEach((matches, idx) => {
+        out[String(idx)] = Array.isArray(matches) ? matches : [];
+      });
+      return out;
+    }
+
+    function decodeRoundsFromFirestore(rawRounds) {
+      if (Array.isArray(rawRounds)) {
+        // Backward compatibility for local/in-memory shape.
+        return rawRounds.map((matches) => (Array.isArray(matches) ? matches : []));
+      }
+      if (!rawRounds || typeof rawRounds !== "object") return null;
+      const keys = Object.keys(rawRounds).sort((a, b) => Number(a) - Number(b));
+      if (!keys.length) return null;
+      return keys.map((k) => (Array.isArray(rawRounds[k]) ? rawRounds[k] : []));
+    }
+
     function loadAdminSession() {
       try {
         return localStorage.getItem(ADMIN_SESSION_KEY) === "1";
@@ -1264,7 +1286,7 @@
         updateSyncUi({ saving: true });
         await db.doc(TOURNAMENT_DOC).set(
           {
-            rounds: state.rounds,
+            rounds: encodeRoundsForFirestore(state.rounds),
             teamList: state.teamList,
             courtCount: state.courtCount,
             courts: state.courts,
@@ -1327,10 +1349,11 @@
         if (!tournamentSnap.exists) return false;
 
         const data = tournamentSnap.data() || {};
-        if (!Array.isArray(data.rounds) || !Array.isArray(data.teamList)) return false;
+        const decodedRounds = decodeRoundsFromFirestore(data.rounds);
+        if (!decodedRounds || !Array.isArray(data.teamList)) return false;
 
         isHydrating = true;
-        state.rounds = data.rounds;
+        state.rounds = decodedRounds;
         state.teamList = data.teamList;
         state.courtCount = Math.max(MIN_COURTS, Math.min(MAX_COURTS, Number(data.courtCount) || 2));
         state.courts = Array.isArray(data.courts) ? data.courts : [];
