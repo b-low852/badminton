@@ -1523,6 +1523,15 @@
       return false;
     }
 
+    function canEdit() {
+      if (state.isAdmin) return true;
+      if (loadAdminSession()) {
+        state.isAdmin = true;
+        return true;
+      }
+      return false;
+    }
+
     function updateAdminUi() {
       const status = document.getElementById("admin-status");
       const loginBtn = document.getElementById("admin-login-btn");
@@ -1886,7 +1895,7 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      const disabled = !state.isAdmin;
+      const disabled = !canEdit();
       return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
@@ -1912,14 +1921,14 @@
             <span class="seed">${seedA}</span>
             <div class="team-cell">${teamSelectHtml(roundIdx, matchIdx, "A")}</div>
             <div class="score-cell">
-              <input type="number" min="0" max="99" placeholder="0" id="bracket-score-${roundIdx}-${matchIdx}-a" data-r="${roundIdx}" data-m="${matchIdx}" data-side="A" value="${row.scoreA}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+              <input type="number" min="0" max="99" placeholder="0" id="bracket-score-${roundIdx}-${matchIdx}-a" data-r="${roundIdx}" data-m="${matchIdx}" data-side="A" value="${row.scoreA}" ${!canEdit() || !row.teamA || !row.teamB ? "disabled" : ""} />
             </div>
           </div>
           <div class="match-row${w === "B" ? " winner" : ""}">
             <span class="seed">${seedB}</span>
             <div class="team-cell">${teamSelectHtml(roundIdx, matchIdx, "B")}</div>
             <div class="score-cell">
-              <input type="number" min="0" max="99" placeholder="0" id="bracket-score-${roundIdx}-${matchIdx}-b" data-r="${roundIdx}" data-m="${matchIdx}" data-side="B" value="${row.scoreB}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+              <input type="number" min="0" max="99" placeholder="0" id="bracket-score-${roundIdx}-${matchIdx}-b" data-r="${roundIdx}" data-m="${matchIdx}" data-side="B" value="${row.scoreB}" ${!canEdit() || !row.teamA || !row.teamB ? "disabled" : ""} />
             </div>
           </div>
         </div>`;
@@ -2115,14 +2124,14 @@
                 <span class="seed">—</span>
                 <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "A")}</div>
                 <div class="score-cell">
-                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-a" data-lr="${ri}" data-lm="${mi}" data-side="A" class="lower-score-input" value="${row.scoreA}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-a" data-lr="${ri}" data-lm="${mi}" data-side="A" class="lower-score-input" value="${row.scoreA}" ${!canEdit() || !row.teamA || !row.teamB ? "disabled" : ""} />
                 </div>
               </div>
               <div class="match-row${w === "B" ? " winner" : ""}">
                 <span class="seed">—</span>
                 <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "B")}</div>
                 <div class="score-cell">
-                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-b" data-lr="${ri}" data-lm="${mi}" data-side="B" class="lower-score-input" value="${row.scoreB}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-b" data-lr="${ri}" data-lm="${mi}" data-side="B" class="lower-score-input" value="${row.scoreB}" ${!canEdit() || !row.teamA || !row.teamB ? "disabled" : ""} />
                 </div>
               </div>
             </div>`;
@@ -2160,8 +2169,7 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      // Lower bracket teams are fed automatically from upper/lower results.
-      const disabled = true;
+      const disabled = !canEdit();
       return `<select data-lr="${roundIdx}" data-lm="${matchIdx}" data-side="${side}" class="lower-team-select" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
@@ -2181,7 +2189,7 @@
       ul.innerHTML = state.teamList
         .map(
           (name, i) =>
-            `<li><span class="team-chip-num">${i + 1}.</span><span class="team-chip-name">${escapeHtml(name)}</span><button type="button" class="remove-team" data-team="${escapeAttr(name)}" title="Remove team" ${state.isAdmin ? "" : "disabled"}>×</button></li>`
+            `<li><span class="team-chip-num">${i + 1}.</span><span class="team-chip-name">${escapeHtml(name)}</span><button type="button" class="remove-team" data-team="${escapeAttr(name)}" title="Remove team" ${canEdit() ? "" : "disabled"}>×</button></li>`
         )
         .join("");
       ul.querySelectorAll(".remove-team").forEach((btn) => {
@@ -2387,13 +2395,13 @@
             <div class="court-live-row${w === "A" ? " winner" : ""}">
               <div class="court-live-name">${teamInputA}</div>
               <div class="court-live-score">
-                <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-a" data-court="${i}" data-side="A" value="${row.scoreA}" ${state.isAdmin && canScore ? "" : "disabled"} />
+                <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-a" data-court="${i}" data-side="A" value="${row.scoreA}" ${canEdit() && canScore ? "" : "disabled"} />
               </div>
             </div>
             <div class="court-live-row${w === "B" ? " winner" : ""}">
               <div class="court-live-name">${teamInputB}</div>
               <div class="court-live-score">
-                <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-b" data-court="${i}" data-side="B" value="${row.scoreB}" ${state.isAdmin && canScore ? "" : "disabled"} />
+                <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-b" data-court="${i}" data-side="B" value="${row.scoreB}" ${canEdit() && canScore ? "" : "disabled"} />
               </div>
             </div>
           </div>`;
@@ -2402,12 +2410,12 @@
 
         html += `<article class="court-card" data-court-idx="${i}">
           <div class="court-card-head">
-            <input type="text" class="court-name-input" id="court-name-${i}" data-court="${i}" value="${escapeAttr(court.name || `Court ${i + 1}`)}" ${state.isAdmin ? "" : "disabled"} maxlength="40" />
+            <input type="text" class="court-name-input" id="court-name-${i}" data-court="${i}" value="${escapeAttr(court.name || `Court ${i + 1}`)}" ${canEdit() ? "" : "disabled"} maxlength="40" />
             ${ref ? '<span class="court-live">LIVE</span>' : ""}
           </div>
           <div class="court-assign">
             <label for="court-select-${i}">Bracket match</label>
-            <select id="court-select-${i}" class="court-match-select" data-court="${i}" ${state.isAdmin ? "" : "disabled"}>${options}</select>
+            <select id="court-select-${i}" class="court-match-select" data-court="${i}" ${canEdit() ? "" : "disabled"}>${options}</select>
           </div>
           ${body}
         </article>`;
