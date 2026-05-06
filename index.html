@@ -975,6 +975,16 @@
       word-break: break-word;
     }
 
+    .court-live-team-select {
+      width: 100%;
+      border: 1px solid #3a3a3a;
+      border-radius: var(--radius);
+      background: #2a2a2a;
+      color: var(--text);
+      font-size: 0.82rem;
+      padding: 0.28rem 0.35rem;
+    }
+
     .court-live-row.winner .court-live-name {
       font-weight: 600;
     }
@@ -1549,23 +1559,70 @@
       const refs = [];
       for (let r = 0; r < state.rounds.length; r++) {
         for (let m = 0; m < state.rounds[r].length; m++) {
-          refs.push(`${r}-${m}`);
+          refs.push(`u-${r}-${m}`);
+        }
+      }
+      for (let r = 0; r < state.lowerRounds.length; r++) {
+        for (let m = 0; m < state.lowerRounds[r].length; m++) {
+          refs.push(`l-${r}-${m}`);
         }
       }
       return refs;
     }
 
-    function matchOptionLabel(r, m) {
-      return `${ROUNDS[r].label} · Match ${m + 1}`;
+    function parseMatchRef(ref) {
+      if (!ref) return null;
+      const parts = String(ref).split("-");
+      if (parts.length === 3 && (parts[0] === "u" || parts[0] === "l")) {
+        const kind = parts[0];
+        const r = Number(parts[1]);
+        const m = Number(parts[2]);
+        if (Number.isNaN(r) || Number.isNaN(m)) return null;
+        return { kind, r, m };
+      }
+      // Backward compatibility for old saved refs ("r-m"), treat as upper bracket.
+      if (parts.length === 2) {
+        const r = Number(parts[0]);
+        const m = Number(parts[1]);
+        if (Number.isNaN(r) || Number.isNaN(m)) return null;
+        return { kind: "u", r, m };
+      }
+      return null;
+    }
+
+    function matchOptionLabel(ref) {
+      const parsed = parseMatchRef(ref);
+      if (!parsed) return "Unknown match";
+      if (parsed.kind === "u") return `${ROUNDS[parsed.r].label} · Match ${parsed.m + 1}`;
+      return `${LOWER_ROUNDS[parsed.r].label} · Match ${parsed.m + 1}`;
+    }
+
+    function getMatchByRef(ref) {
+      const parsed = parseMatchRef(ref);
+      if (!parsed) return null;
+      if (parsed.kind === "u") {
+        const row = state.rounds?.[parsed.r]?.[parsed.m];
+        if (!row) return null;
+        return { ...parsed, row };
+      }
+      const row = state.lowerRounds?.[parsed.r]?.[parsed.m];
+      if (!row) return null;
+      return { ...parsed, row };
+    }
+
+    function canonicalMatchRef(ref) {
+      const parsed = parseMatchRef(ref);
+      if (!parsed) return null;
+      return `${parsed.kind}-${parsed.r}-${parsed.m}`;
     }
 
     function setCourtMatch(courtIdx, ref) {
       if (!ensureAdmin()) return;
       ensureCourtsLength();
-      const val = ref && ref !== "" ? ref : null;
+      const val = ref && ref !== "" ? canonicalMatchRef(ref) : null;
       if (val) {
         state.courts.forEach((c, i) => {
-          if (i !== courtIdx && c.matchRef === val) c.matchRef = null;
+          if (i !== courtIdx && canonicalMatchRef(c.matchRef) === val) c.matchRef = null;
         });
       }
       state.courts[courtIdx].matchRef = val;
@@ -1825,7 +1882,8 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      const disabled = !state.isAdmin;
+      // Keep only Round 1 editable; next rounds auto-advance by scores.
+      const disabled = !state.isAdmin || roundIdx > 0;
       return `<select data-r="${roundIdx}" data-m="${matchIdx}" data-side="${side}" aria-label="Team ${side}" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
@@ -1839,8 +1897,8 @@
     function renderMatch(roundIdx, matchIdx) {
       const row = state.rounds[roundIdx][matchIdx];
       const w = getWinner(row);
-      const matchRef = `${roundIdx}-${matchIdx}`;
-      const isLive = state.courts?.some((c) => c?.matchRef === matchRef);
+      const matchRef = `u-${roundIdx}-${matchIdx}`;
+      const isLive = state.courts?.some((c) => canonicalMatchRef(c?.matchRef) === matchRef);
 
       const seedA = row.seedA != null ? row.seedA : "—";
       const seedB = row.seedB != null ? row.seedB : "—";
@@ -2054,14 +2112,14 @@
                 <span class="seed">—</span>
                 <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "A")}</div>
                 <div class="score-cell">
-                  <input type="number" min="0" max="99" placeholder="0" data-lr="${ri}" data-lm="${mi}" data-side="A" class="lower-score-input" value="${row.scoreA}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-a" data-lr="${ri}" data-lm="${mi}" data-side="A" class="lower-score-input" value="${row.scoreA}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
                 </div>
               </div>
               <div class="match-row${w === "B" ? " winner" : ""}">
                 <span class="seed">—</span>
                 <div class="team-cell">${teamSelectHtmlForLower(ri, mi, "B")}</div>
                 <div class="score-cell">
-                  <input type="number" min="0" max="99" placeholder="0" data-lr="${ri}" data-lm="${mi}" data-side="B" class="lower-score-input" value="${row.scoreB}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
+                  <input type="number" min="0" max="99" placeholder="0" id="lower-score-${ri}-${mi}-b" data-lr="${ri}" data-lm="${mi}" data-side="B" class="lower-score-input" value="${row.scoreB}" ${!state.isAdmin || !row.teamA || !row.teamB ? "disabled" : ""} />
                 </div>
               </div>
             </div>`;
@@ -2099,7 +2157,8 @@
         (t) =>
           `<option value="${escapeAttr(t)}" ${t === val ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
       );
-      const disabled = !state.isAdmin;
+      // Lower bracket teams are fed automatically from upper/lower results.
+      const disabled = true;
       return `<select data-lr="${roundIdx}" data-lm="${matchIdx}" data-side="${side}" class="lower-team-select" ${disabled ? "disabled" : ""}>${opts.join("")}</select>`;
     }
 
@@ -2211,8 +2270,7 @@
           const side = e.target.dataset.side;
           const num = applyScoreFromInput(r, m, side, e.target.value);
           e.target.value = num;
-          renderCourts();
-          queueSaveTournamentState();
+          syncAfterEdit(r, m);
         });
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.r;
@@ -2255,7 +2313,7 @@
           if (side === "A") row.scoreA = num;
           else row.scoreB = num;
           e.target.value = num;
-          queueSaveTournamentState();
+          syncLowerAfterEdit(r, m);
         });
         inp.addEventListener("change", (e) => {
           const r = +e.target.dataset.lr;
@@ -2279,12 +2337,11 @@
       let html = "";
       for (let i = 0; i < state.courtCount; i++) {
         const court = state.courts[i] || { matchRef: null, name: `Court ${i + 1}` };
-        const ref = court.matchRef;
+        const ref = canonicalMatchRef(court.matchRef);
         let options = `<option value="">— Idle (no match) —</option>`;
         refs.forEach((key) => {
-          const [r, m] = key.split("-").map(Number);
-          const taken = state.courts.some((c, idx) => idx !== i && c.matchRef === key);
-          const label = matchOptionLabel(r, m);
+          const taken = state.courts.some((c, idx) => idx !== i && canonicalMatchRef(c.matchRef) === key);
+          const label = matchOptionLabel(key);
           const sel = ref === key ? " selected" : "";
           const dis = taken ? " disabled" : "";
           options += `<option value="${key}"${sel}${dis}>${escapeHtml(label)}</option>`;
@@ -2294,26 +2351,50 @@
         if (!ref) {
           body = `<div class="court-idle">Assign a match to show teams and live scores.</div>`;
         } else {
-          const [r, m] = ref.split("-").map(Number);
-          const row = state.rounds[r][m];
+          const match = getMatchByRef(ref);
+          if (!match) {
+            body = `<div class="court-idle">Invalid match reference. Please reassign.</div>`;
+          } else {
+          const { row } = match;
           const w = getWinner(row);
           const na = row.teamA || "—";
           const nb = row.teamB || "—";
           const canScore = !!(row.teamA && row.teamB);
+          const teamInputA = state.isAdmin
+            ? `<select class="court-live-team-select" data-court="${i}" data-side="A">
+                ${["", ...state.teamList]
+                  .map(
+                    (t) =>
+                      `<option value="${escapeAttr(t)}" ${t === row.teamA ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
+                  )
+                  .join("")}
+              </select>`
+            : `${escapeHtml(na)}`;
+          const teamInputB = state.isAdmin
+            ? `<select class="court-live-team-select" data-court="${i}" data-side="B">
+                ${["", ...state.teamList]
+                  .map(
+                    (t) =>
+                      `<option value="${escapeAttr(t)}" ${t === row.teamB ? "selected" : ""}>${t ? escapeHtml(t) : "— Select team —"}</option>`
+                  )
+                  .join("")}
+              </select>`
+            : `${escapeHtml(nb)}`;
           body = `<div class="court-live-body">
             <div class="court-live-row${w === "A" ? " winner" : ""}">
-              <div class="court-live-name">${escapeHtml(na)}</div>
+              <div class="court-live-name">${teamInputA}</div>
               <div class="court-live-score">
                 <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-a" data-court="${i}" data-side="A" value="${row.scoreA}" ${state.isAdmin && canScore ? "" : "disabled"} />
               </div>
             </div>
             <div class="court-live-row${w === "B" ? " winner" : ""}">
-              <div class="court-live-name">${escapeHtml(nb)}</div>
+              <div class="court-live-name">${teamInputB}</div>
               <div class="court-live-score">
                 <input type="number" min="0" max="99" placeholder="0" id="court-${i}-score-b" data-court="${i}" data-side="B" value="${row.scoreB}" ${state.isAdmin && canScore ? "" : "disabled"} />
               </div>
             </div>
           </div>`;
+          }
         }
 
         html += `<article class="court-card" data-court-idx="${i}">
@@ -2349,20 +2430,46 @@
         });
       });
 
+      document.querySelectorAll(".court-live-team-select").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          if (!ensureAdmin()) return;
+          const courtIdx = +e.target.dataset.court;
+          const side = e.target.dataset.side;
+          const ref = state.courts[courtIdx]?.matchRef;
+          const match = getMatchByRef(ref);
+          if (!match) return;
+          const val = e.target.value;
+          if (side === "A") match.row.teamA = val;
+          else match.row.teamB = val;
+          if (match.kind === "u") syncAfterEdit(match.r, match.m);
+          else syncLowerAfterEdit(match.r, match.m);
+        });
+      });
+
       document.querySelectorAll('.court-live-score input[type="number"]').forEach((inp) => {
         inp.addEventListener("input", (e) => {
           const snap = captureFocusSnapshot();
           const courtIdx = +e.target.dataset.court;
           const ref = state.courts[courtIdx]?.matchRef;
-          if (!ref) return;
-          const [r, m] = ref.split("-").map(Number);
+          const match = getMatchByRef(ref);
+          if (!match) return;
           const side = e.target.dataset.side;
-          const num = applyScoreFromInput(r, m, side, e.target.value);
+          let num = "";
+          if (match.kind === "u") {
+            num = applyScoreFromInput(match.r, match.m, side, e.target.value);
+          } else {
+            const v = String(e.target.value ?? "").trim();
+            num = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
+            if (side === "A") match.row.scoreA = num;
+            else match.row.scoreB = num;
+          }
           e.target.value = num;
-          const oa = document.getElementById(`bracket-score-${r}-${m}-a`);
-          const ob = document.getElementById(`bracket-score-${r}-${m}-b`);
-          if (oa) oa.value = state.rounds[r][m].scoreA;
-          if (ob) ob.value = state.rounds[r][m].scoreB;
+          if (match.kind === "u") {
+            const oa = document.getElementById(`bracket-score-${match.r}-${match.m}-a`);
+            const ob = document.getElementById(`bracket-score-${match.r}-${match.m}-b`);
+            if (oa) oa.value = state.rounds[match.r][match.m].scoreA;
+            if (ob) ob.value = state.rounds[match.r][match.m].scoreB;
+          }
           renderCourts();
           restoreFocusSnapshot(snap);
           queueSaveTournamentState();
@@ -2370,15 +2477,16 @@
         inp.addEventListener("change", (e) => {
           const courtIdx = +e.target.dataset.court;
           const ref = state.courts[courtIdx]?.matchRef;
-          if (!ref) return;
-          const [r, m] = ref.split("-").map(Number);
+          const match = getMatchByRef(ref);
+          if (!match) return;
           const side = e.target.dataset.side;
-          const row = state.rounds[r][m];
+          const row = match.row;
           const v = e.target.value.trim();
           if (side === "A") row.scoreA = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
           else row.scoreB = v === "" ? "" : String(Math.max(0, Math.min(99, Number(v))));
           e.target.value = row[side === "A" ? "scoreA" : "scoreB"];
-          syncAfterEdit(r, m);
+          if (match.kind === "u") syncAfterEdit(match.r, match.m);
+          else syncLowerAfterEdit(match.r, match.m);
         });
         inp.addEventListener("keydown", (e) => {
           if (e.key === "Enter") e.target.blur();
