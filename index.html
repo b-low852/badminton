@@ -129,6 +129,19 @@
       color: var(--text);
     }
 
+    .admin-reset-btn {
+      background: #7a1a1a;
+      color: #ffcccc;
+      font-weight: 600;
+    }
+    .admin-reset-btn:hover:not(:disabled) {
+      background: #a02020;
+    }
+    .admin-reset-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     .admin-status {
       font-size: 0.82rem;
       color: var(--muted);
@@ -1253,6 +1266,7 @@
     <button type="button" class="admin-login-btn" id="admin-login-btn">Login</button>
     <button type="button" class="admin-logout-btn" id="admin-logout-btn">Logout</button>
     <button type="button" class="admin-logout-btn" id="admin-save-btn" disabled>Save now</button>
+    <button type="button" class="admin-reset-btn" id="admin-reset-btn" disabled>Reset all</button>
     <span class="admin-status" id="admin-status">View-only mode (login to edit)</span>
     <span class="admin-status" id="sync-status" style="margin-left:auto"></span>
   </section>
@@ -1395,7 +1409,9 @@
     function updateSyncUi(opts = {}) {
       const el = document.getElementById("sync-status");
       const saveBtn = document.getElementById("admin-save-btn");
+      const resetBtn = document.getElementById("admin-reset-btn");
       if (saveBtn) saveBtn.disabled = !state.isAdmin || !db;
+      if (resetBtn) resetBtn.disabled = !state.isAdmin;
       if (!el) return;
       if (!db) {
         el.textContent = "Firebase: not connected";
@@ -2578,6 +2594,14 @@
 
     document.getElementById("admin-save-btn").addEventListener("click", async () => {
       if (!ensureAdmin()) return;
+      await saveTournamentState();
+    });
+
+    document.getElementById("admin-reset-btn").addEventListener("click", async () => {
+      if (!ensureAdmin()) return;
+      if (!confirm("Reset ALL scores, teams and bracket progress? This cannot be undone.")) return;
+      buildInitialState();
+      render();
       await saveTournamentState();
     });
 
